@@ -23,20 +23,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: "latest"
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Install Android platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          arguments: assembleDebug
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
