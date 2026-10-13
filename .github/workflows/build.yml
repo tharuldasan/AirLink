@@ -29,17 +29,13 @@ jobs:
       - name: Install Android platform and build tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Generate Gradle wrapper
+      - name: Download Gradle 8.9
         run: |
-          mkdir -p "$HOME/gradle-bootstrap"
-          cd "$HOME/gradle-bootstrap"
-          curl -fsSLO https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip
-          ./gradle-8.9/bin/gradle -p "$GITHUB_WORKSPACE" wrapper --gradle-version 8.9
-          chmod +x "$GITHUB_WORKSPACE/gradlew"
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        run: "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
