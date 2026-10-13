@@ -88,7 +88,7 @@ private fun DataControllerApp(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(color = Navy, shape = RoundedCornerShape(16.dp), modifier = Modifier.size(54.dp)) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Bolt, null, tint = Cyan, modifier = Modifier.size(34.dp))
+                            Icon(Icons.Rounded.Devices, null, tint = Cyan, modifier = Modifier.size(34.dp))
                         }
                     }
                     Spacer(Modifier.width(12.dp))
