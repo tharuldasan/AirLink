@@ -73,6 +73,26 @@ private fun DataControllerApp(
     var showStartupPrompt by remember { mutableStateOf(true) }
     val localPairCode = remember { (1000 + SecureRandom().nextInt(9000)).toString() }
 
+    if (showStartupPrompt) {
+        AlertDialog(
+            onDismissRequest = { showStartupPrompt = false },
+            title = { Text("Allow background operation?") },
+            text = {
+                Text("Android may pause background activity to save battery. Review battery settings and your phone manufacturer's Auto-start or Background activity settings. These can improve reliability but cannot guarantee uninterrupted operation.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showStartupPrompt = false
+                    onBatterySettings()
+                }) { Text("Open settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStartupPrompt = false }) { Text("Later") }
+            },
+            properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
+        )
+    }
+
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Navy,
