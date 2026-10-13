@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +70,7 @@ private fun DataControllerApp(
     var status by remember { mutableStateOf("Not paired") }
     var lastCommand by remember { mutableStateOf("No commands sent") }
     var showHelp by remember { mutableStateOf(false) }
+    var showStartupPrompt by remember { mutableStateOf(true) }
     val localPairCode = remember { (1000 + SecureRandom().nextInt(9000)).toString() }
 
     MaterialTheme(
