@@ -23,39 +23,22 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Locate and prepare Android SDK
-        shell: bash
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
-          find "$ANDROID_HOME" -maxdepth 5 -name sdkmanager -type f || true
-          ls -la "$ANDROID_HOME" || true
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "latest"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          SDKMANAGER="$(find "$ANDROID_HOME" -maxdepth 5 -name sdkmanager -type f | sort | tail -n 1)"
-          if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found in preinstalled SDK. Installing command-line tools."
-            mkdir -p "$RUNNER_TEMP/android-cmdline"
-            curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/cmdtools.zip"
-            unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools-extract"
-            mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
-            cp -R "$RUNNER_TEMP/cmdtools-extract/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          fi
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Download Gradle 8.9
-        run: |
-          curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o "$RUNNER_TEMP/gradle.zip"
-          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          arguments: assembleDebug
 
-      - name: Build debug APK
-        run: "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon assembleDebug
-
-      - name: Upload APK artifact
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: data-controller-debug-apk
