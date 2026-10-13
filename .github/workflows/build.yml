@@ -13,9 +13,6 @@ jobs:
   build:
     name: Build debug APK
     runs-on: ubuntu-latest
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,15 +23,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Confirm Android SDK installation
+      - name: Locate and prepare Android SDK
+        shell: bash
         run: |
-          test -d "$ANDROID_HOME" || (echo "Android SDK not found at $ANDROID_HOME"; exit 1)
-          find "$ANDROID_HOME" -maxdepth 4 -name sdkmanager -type f
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          find "$ANDROID_HOME" -maxdepth 5 -name sdkmanager -type f || true
+          ls -la "$ANDROID_HOME" || true
 
-      - name: Accept Android SDK licenses and install packages
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          SDKMANAGER="$(find "$ANDROID_HOME" -maxdepth 4 -name sdkmanager -type f | sort | tail -n 1)"
-          test -n "$SDKMANAGER"
+          SDKMANAGER="$(find "$ANDROID_HOME" -maxdepth 5 -name sdkmanager -type f | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found in preinstalled SDK. Installing command-line tools."
+            mkdir -p "$RUNNER_TEMP/android-cmdline"
+            curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/cmdtools.zip"
+            unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$RUNNER_TEMP/cmdtools-extract"
+            mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+            cp -R "$RUNNER_TEMP/cmdtools-extract/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/latest/"
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
