@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "557925362144",
+    "project_id": "data-controller-6b379",
+    "storage_bucket": "data-controller-6b379.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:557925362144:android:f107bb10658bf7f32aa385",
+        "android_client_info": {
+          "package_name": "com.tharul.datacontroller"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMAIVtvRvnqiQT69PW0CiZE15jgoQ8bF0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
