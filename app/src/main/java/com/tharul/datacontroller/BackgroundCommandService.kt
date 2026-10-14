@@ -19,6 +19,7 @@ import com.google.firebase.firestore.ListenerRegistration
 class BackgroundCommandService : Service() {
     private var commandListener: ListenerRegistration? = null
     private var listenerUid: String? = null
+    private var listenerPairingCode: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -51,11 +52,15 @@ class BackgroundCommandService : Service() {
     }
 
     private fun attachListener(uid: String) {
-        if (listenerUid == uid && commandListener != null) return
+        val pairingCode = getSharedPreferences("data_controller", Context.MODE_PRIVATE)
+            .getString("pairingCode", null) ?: return
+        if (listenerUid == uid && listenerPairingCode == pairingCode && commandListener != null) return
         commandListener?.remove()
         listenerUid = uid
+        listenerPairingCode = pairingCode
         commandListener = FirebaseFirestore.getInstance()
             .collection("commands")
+            .whereEqualTo("pairingId", pairingCode)
             .whereEqualTo("targetUid", uid)
             .whereEqualTo("status", "pending")
             .addSnapshotListener { snapshot, error ->
