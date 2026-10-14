@@ -13,22 +13,22 @@ A regular Android app cannot silently enable or disable airplane mode on all bra
 3. Download the **data-controller-debug-apk** artifact when the workflow completes.
 4. Extract the ZIP and install the APK on both Android phones.
 
-The app currently includes a four-digit pairing-code UI and a local demo command queue. It does not connect to Firebase until you add your own Firebase project configuration (instructions below).
+The app uses `app/google-services.json` to connect to Firebase Authentication and Cloud Firestore. Pairing and command requests require the repository Firestore rules to be published and Anonymous sign-in to be enabled.
 
 ## Connect Firebase (free Spark plan to start)
 
 1. Open https://console.firebase.google.com/ and create a project.
 2. Add an Android app with package name `com.tharul.datacontroller`.
 3. Download `google-services.json` and upload it to `app/google-services.json` in this repository. **Do not commit service-account private keys or Admin SDK credentials.**
-4. In Firebase Authentication, enable **Email/Password** (or use another Firebase-supported sign-in provider).
+4. In Firebase Authentication, open **Sign-in method** and enable **Anonymous** sign-in (this app uses Firebase anonymous authentication).
 5. Create a Cloud Firestore database.
-6. Configure strict Firestore Security Rules before using the app. Do not use public read/write rules.
+6. In Firestore Database → Rules, publish the repository's `firestore.rules`. Do not use public read/write rules. The app uses four-digit pairing codes that expire after five minutes.
 
 For a production design, use an authenticated pairing handshake with a short-lived code, attempt limits, expiration, a cryptographically random pairing token, and device-owner authorization. A four-digit code alone has only 10,000 possibilities: enforce server-side rate limits and never let clients enumerate codes.
 
 ## Background operation
 
-The app can request exemption from battery optimizations and explain Android's background settings. The user must approve any system prompts. Android and manufacturers may still delay background execution; no normal app can guarantee an always-running process. A foreground service requires a visible persistent notification and the correct Android service permissions. Firebase Cloud Messaging is generally preferable to maintaining a permanent socket.
+On the target phone, the app can run a foreground service with a persistent notification, request exemption from battery optimizations, and attempt to restart after reboot. The owner must approve system prompts. Android and manufacturers can still stop background work; force-stop, revoked notifications/permissions, power saving, or network loss can interrupt delivery. A foreground service requires a visible persistent notification and the correct Android service permissions. Firebase Cloud Messaging is generally preferable to maintaining a permanent socket.
 
 ## First-run pairing flow
 
