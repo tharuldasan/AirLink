@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isPairMember(pairingId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/pairings/$(pairingId))
+        && request.auth.uid in get(
+          /databases/$(database)/documents/pairings/$(pairingId)
+        ).data.memberUids;
+    }
+
+    // Private profile/device metadata: each account can access only its own.
+    match /users/{userId} {
+      allow read, create, update, delete:
+        if signedIn() && request.auth.uid == userId;
+    }
+
+    // Pairing records are private to their members.
+    // A client may create a pending record containing only itself.
+    // Adding another member requires a trusted pairing flow; do not let a
+    // client promote an arbitrary UID into a pairing.
+    match /pairings/{pairingId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.memberUids;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'ownerUid', 'memberUids', 'state', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.memberUids is list
+        && request.resource.data.memberUids.size() == 1
+        && request.resource.data.memberUids[0] == request.auth.uid
+        && request.resource.data.state == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.memberUids
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.memberUids == resource.data.memberUids
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['state', 'updatedAt'])
+        && request.resource.data.state in ['pending', 'active', 'revoked']
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if signedIn()
+        && request.auth.uid == resource.data.ownerUid;
+    }
+
+    // Commands can only be created by an authenticated member of the pairing.
+    // The target device updates delivery status; clients cannot rewrite commands.
+    match /commands/{commandId} {
+      allow read: if signedIn() && isPairMember(resource.data.pairingId);
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'pairingId', 'senderUid', 'targetUid', 'action', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.pairingId is string
+        && isPairMember(request.resource.data.pairingId)
+        && request.resource.data.targetUid is string
+        && request.resource.data.targetUid in get(
+          /databases/$(database)/documents/pairings/$(request.resource.data.pairingId)
+        ).data.memberUids
+        && request.resource.data.targetUid != request.auth.uid
+        && request.resource.data.action in ['ping', 'open_airplane_settings']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && resource.data.targetUid == request.auth.uid
+        && isPairMember(resource.data.pairingId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['received', 'completed', 'failed']
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if signedIn()
+        && resource.data.senderUid == request.auth.uid
+        && isPairMember(resource.data.pairingId);
+    }
+
+    // Four-digit codes are too easy to guess without a trusted server-side
+    // rate limiter. Deny all direct client access; never store usable codes
+    // in a publicly readable collection.
+    match /pairingCodes/{codeId} {
+      allow read, write: if false;
+    }
+
+    // Everything not explicitly allowed above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
