@@ -1,9 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function signedIn() {
       return request.auth != null;
+    }
+
+    function validNewPairing(codeId) {
+      return codeId.matches('^[0-9]{4}$')
+        && request.resource.data.keys().hasOnly([
+          'ownerUid', 'controllerUid', 'memberUids', 'state',
+          'createdAt', 'updatedAt', 'expiresAt'
+        ])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.controllerUid == null
+        && request.resource.data.memberUids is list
+        && request.resource.data.memberUids.size() == 1
+        && request.resource.data.memberUids[0] == request.auth.uid
+        && request.resource.data.state == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(5, 'm');
     }
 
     function isPairMember(pairingId) {
@@ -14,49 +32,68 @@ service cloud.firestore {
         ).data.memberUids;
     }
 
-    // Private profile/device metadata: each account can access only its own.
     match /users/{userId} {
-      allow read, create, update, delete:
-        if signedIn() && request.auth.uid == userId;
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
     }
 
-    // Pairing records are private to their members.
-    // A client may create a pending record containing only itself.
-    // Adding another member requires a trusted pairing flow; do not let a
-    // client promote an arbitrary UID into a pairing.
-    match /pairings/{pairingId} {
-      allow read: if signedIn()
-        && request.auth.uid in resource.data.memberUids;
+    // Document IDs are four digits. Codes expire after five minutes and are
+    // single-use. Because the free-plan client-only flow has no trusted rate
+    // limiter, do not use this design for sensitive accounts or data.
+    match /pairings/{codeId} {
+      allow get: if signedIn() && (
+        request.auth.uid in resource.data.memberUids
+        || (resource.data.state == 'pending' && resource.data.expiresAt > request.time)
+      );
+      allow list: if false;
 
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly([
-          'ownerUid', 'memberUids', 'state', 'createdAt', 'updatedAt'
-        ])
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.memberUids is list
-        && request.resource.data.memberUids.size() == 1
-        && request.resource.data.memberUids[0] == request.auth.uid
-        && request.resource.data.state == 'pending'
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+      allow create: if signedIn() && validNewPairing(codeId);
 
-      allow update: if signedIn()
-        && request.auth.uid in resource.data.memberUids
-        && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.memberUids == resource.data.memberUids
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['state', 'updatedAt'])
-        && request.resource.data.state in ['pending', 'active', 'revoked']
-        && request.resource.data.updatedAt == request.time;
+      // Permit replacing an expired pending code, or a controller joining an
+      // unexpired code. No client can add a third member.
+      allow update: if signedIn() && (
+        (
+          resource.data.state == 'pending'
+          && resource.data.expiresAt <= request.time
+          && validNewPairing(codeId)
+        )
+        ||
+        (
+          resource.data.state == 'pending'
+          && resource.data.expiresAt > request.time
+          && request.auth.uid != resource.data.ownerUid
+          && resource.data.memberUids.size() == 1
+          && request.resource.data.keys().hasOnly([
+            'ownerUid', 'controllerUid', 'memberUids', 'state',
+            'createdAt', 'updatedAt', 'expiresAt'
+          ])
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.expiresAt == resource.data.expiresAt
+          && request.resource.data.memberUids.size() == 2
+          && request.resource.data.memberUids.hasAll(resource.data.memberUids)
+          && request.resource.data.memberUids.hasAll([request.auth.uid])
+          && request.resource.data.controllerUid == request.auth.uid
+          && request.resource.data.state == 'active'
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['controllerUid', 'memberUids', 'state', 'updatedAt'])
+        )
+      );
 
-      allow delete: if signedIn()
-        && request.auth.uid == resource.data.ownerUid;
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerUid;
     }
 
-    // Commands can only be created by an authenticated member of the pairing.
-    // The target device updates delivery status; clients cannot rewrite commands.
+    function isPairedCommand(commandData) {
+      return isPairMember(commandData.pairingId)
+        && commandData.targetUid in get(
+          /databases/$(database)/documents/pairings/$(commandData.pairingId)
+        ).data.memberUids;
+    }
+
     match /commands/{commandId} {
-      allow read: if signedIn() && isPairMember(resource.data.pairingId);
+      allow read: if signedIn()
+        && isPairMember(resource.data.pairingId)
+        && resource.data.targetUid == request.auth.uid;
 
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
@@ -71,7 +108,7 @@ service cloud.firestore {
           /databases/$(database)/documents/pairings/$(request.resource.data.pairingId)
         ).data.memberUids
         && request.resource.data.targetUid != request.auth.uid
-        && request.resource.data.action in ['ping', 'open_airplane_settings']
+        && request.resource.data.action in ['airplane_on', 'airplane_off']
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
@@ -79,24 +116,13 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.targetUid == request.auth.uid
         && isPairMember(resource.data.pairingId)
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
         && request.resource.data.status in ['received', 'completed', 'failed']
         && request.resource.data.updatedAt == request.time;
 
-      allow delete: if signedIn()
-        && resource.data.senderUid == request.auth.uid
-        && isPairMember(resource.data.pairingId);
+      allow delete: if false;
     }
 
-    // Four-digit codes are too easy to guess without a trusted server-side
-    // rate limiter. Deny all direct client access; never store usable codes
-    // in a publicly readable collection.
-    match /pairingCodes/{codeId} {
-      allow read, write: if false;
-    }
-
-    // Everything not explicitly allowed above is denied.
     match /{document=**} {
       allow read, write: if false;
     }
